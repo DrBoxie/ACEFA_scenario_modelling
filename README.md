@@ -1,6 +1,7 @@
 # ACEFA Scenario Modelling
 
 This repository contains the code for the ACEFA scenario-modelling analysis.
+Tested with Python 3.10.12.
 
 ## Execution pipeline
 
