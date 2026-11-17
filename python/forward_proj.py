@@ -1,8 +1,6 @@
 # TODO: Check daily admin vacc helper function below to ensure new values are used of LAIV
 # TODO: Update LAIV vaccination timing to not coincide with IIV timing
 
-# TODO: Correct plot_corr_for_AR code
-
 import numpy as np
 import pandas as pd
 import os
@@ -11,22 +9,20 @@ import abc_code as abc
 from operator import itemgetter
 import matplotlib.pyplot as plt
 import time
-from matplotlib.ticker import StrMethodFormatter, FuncFormatter
+from matplotlib.ticker import FuncFormatter
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 import copy
 import pyarrow as pa
 import pyarrow.parquet as pq
-import platform
 from itertools import product
 
 plt.close("all")                                                                # Close all figures that may be open in memory
 
 local_parallel = True
-local_waning = True
 local_vaccination_term = "term_1"
 
-def forw_proj(parallel = True, waning = False, vaccination_term = "term_1" , nr_cores = 12):
+def forw_proj(parallel = True, vaccination_term = "term_1", K_beta = 0, nr_cores = 12):
     
     print("Let's get this thing on the road...\n")
     
@@ -34,18 +30,10 @@ def forw_proj(parallel = True, waning = False, vaccination_term = "term_1" , nr_
     seed = 790202       # Used whenever multiple runs are done for each combo of particle and scenario
     
     output_figs = True
-    output_dfs = False
-    analyse_ARs = False
+    output_dfs = True
     
-    if platform.system() == "Windows":
-        current_dir = os.getcwd().lower()
-    else:
-        current_dir = "/pvol"
-
-    if waning:    
-        particle_addr = os.path.join(current_dir, "ABC outputs with waning")
-    else:
-        particle_addr = os.path.join(current_dir, "ABC outputs no waning")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    particle_addr = os.path.join(current_dir, "ABC outputs term " + vaccination_term[-1] + " vaccination and K = " + str(K_beta))
         
     PATH_IN = os.path.join(particle_addr, "accepted_particles.csv")
     SEED_IN = os.path.join(particle_addr, "accepted_seeds.csv")
@@ -54,10 +42,7 @@ def forw_proj(parallel = True, waning = False, vaccination_term = "term_1" , nr_
     ACC_OPT_IN = os.path.join(particle_addr, "acc_opt_phis.csv")
     ACC_INF_INC = os.path.join(particle_addr, "acc_inf_inc.csv")
     
-    if waning:
-        output_folder_path = os.path.join(current_dir, "Forward projection with waning")
-    else:
-        output_folder_path = os.path.join(current_dir, "Forward projection no waning")
+    output_folder_path = os.path.join(current_dir, "Forward projection term " + vaccination_term[-1] + " vaccination and K = " + str(K_beta))
     
     particles = pd.read_csv(PATH_IN ,index_col = 0)
     part_vars = list(particles.columns)
@@ -104,39 +89,10 @@ def forw_proj(parallel = True, waning = False, vaccination_term = "term_1" , nr_
     
     print("Simulation done.\n")
     
-    if analyse_ARs:
-        
-        print("Doing some analyses of high vs low AR's.\n")
-        
-        AR_list = []
-        AR_dict = {}
-        
-        for part in range(nr_parts):
-            AR_dict = {}
-            for k in scenarios:
-                AR_dict[k] = results_list[part][1][k][0][:8] + results_list[part][1][k][0][8:]
-            AR_list.append(AR_dict)
-                
-        total_AR_list = [
-            {key: arr.sum() for key, arr in d.items()}
-            for d in AR_list
-            ]            
-        
-        sorted_indices = sorted(range(nr_parts), key=lambda i: total_AR_list[i]['A'], reverse=True)
-        
-        perc = int(np.ceil(0.1 * nr_parts))
-        
-        highest_AR = sorted_indices[:perc]
-        lowest_AR = sorted_indices[-perc:]
-    
-        plot_corr_for_AR(output_folder_path, particles, part_vars, highest_AR, lowest_AR)
-    
-        print("Finished the AR analyses. Hopefully that helps.\n")
-    
     if output_figs:
         print("Time to go to the drawing board.\n")
         
-        params = sim.init_params(vaccination_term)
+        params = sim.init_params(term_admin_laiv = vaccination_term, K_beta = K_beta)
         nr_days, t_start, t_end, colors = itemgetter("nr_days", "t_start", "t_end", "colors")(params)
         
         labels = {s: scenarios[s][3] for s in scenarios}
@@ -200,11 +156,7 @@ def forw_proj(parallel = True, waning = False, vaccination_term = "term_1" , nr_
         # Output parquet file for downstream processing
         print("Start output parquet file of full runs.\n")
         
-        if waning:
-          name_end = "_with_waning.parquet"
-        else:
-          name_end = "_no_waning.parquet"
-        filename_parquet = os.path.join(output_folder_path, "df_incid" + name_end)
+        filename_parquet = os.path.join(output_folder_path, "df_incid.parquet")
         filename_parquet_summed = os.path.join(output_folder_path, "df_incid_summed.parquet")
         filename_parquet_max_timing = os.path.join(output_folder_path, "df_max_timing.parquet")
         
@@ -346,162 +298,6 @@ def forw_proj(parallel = True, waning = False, vaccination_term = "term_1" , nr_
         df_max_timing.to_parquet(filename_parquet_max_timing, index = False)
         
         print("Finished outputting parquet file.\n")
-
-def plot_corr_for_AR(fig_folder_path, full_parts, sample_keys, highest_AR, lowest_AR, waning):
-    
-    fig_filepath = os.path.join(fig_folder_path, "corr_parts_params_scenarios")
-    
-    beta_0_range = [0.037, 0.055]
-    beta_1_range = [0.05, 0.3]
-    shift = [40, 190]
-    
-    if waning:
-        half_life_range = [250, 1825]
-    else:
-        half_life_range = [365_000, 365_250]
-    phi_S1_range = [0.2, 0.8]
-    phi_V0_range = [0.2, 0.8]
-    phi_V1_range = [0.2, 0.8]
-    frac_S1_range = [0.2, 0.8]
-    
-    sample_ranges = {
-        "beta_0": beta_0_range,
-        "beta_1": beta_1_range,
-        "shift": shift,
-        "half_life": half_life_range,
-        "phi_S1": phi_S1_range, 
-        "phi_V0": phi_V0_range, 
-        "phi_V1": phi_V1_range,
-        "frac_S1": frac_S1_range
-        }    
-    
-    with plt.rc_context({
-       "axes.titlesize": 40,
-       "axes.labelsize": 36,
-       "xtick.labelsize": 30,
-       "ytick.labelsize": 30,
-       "legend.fontsize": 36,
-       "legend.title_fontsize": 38,
-       "figure.titlesize": 48
-       }):
-        
-        df = pd.DataFrame(full_parts, columns=sample_keys)
-    
-        # Create a boolean mask for accepted (largest AR) vs rejected (smallest AR) particles
-        AR_size = np.full(len(df), "Medium")
-        AR_size[highest_AR] = "High"
-        AR_size[lowest_AR] = "Low"
-        df["AR_category"] = AR_size
-        
-        plot_labs = [r"$\beta_0$", r"$\beta_1$", r"fraction $S^1$", r"$T_{1/2}$", r"$\phi^{S^1}$", r"$\phi^{V^0}$", r"$\phi^{V^1}$", "Shift"]
-
-        n = len(sample_keys)
-        
-        col_high, col_mid, col_low = "royalblue", "silver", "firebrick"
-        colour_map = {
-            "High": col_high,
-            "Medium": col_mid,
-            "Low": col_low
-            }      
-
-        fig, axes = plt.subplots(n, n, figsize=(4*n,4*n))        
-        
-        fmt_1 = FuncFormatter(lambda x, _: f"{x:.1f}")
-        fmt_2 = FuncFormatter(lambda x, _: f"{x:.2f}")
-        fmt_int = FuncFormatter(lambda x, _: f"{int(x)}")
-        
-        for i, y in enumerate(sample_keys):
-            for j, x in enumerate(sample_keys):
-                ax = axes[i,j]
-                if i < j:
-                    ax.set_visible(False)
-                    continue
-                elif i == j:                    
-                    bins = np.linspace(min(sample_ranges[x]), max(sample_ranges[x]), 21)
-
-                    for cat in ["Low", "Medium", "High"]:
-                        ax.hist(
-                            df.loc[df["AR_category"] == cat, x],
-                            bins=bins,
-                            color=colour_map[cat],
-                            alpha=0.5 if cat == "Medium" else 0.7,
-                            edgecolor="none",
-                            density=True
-                        )
-                    
-                    ax.set_xlim(min(sample_ranges[x]), max(sample_ranges[x]))
-                else:
-                    ax.scatter(df[x], df[y], color=df["AR_category"].map(colour_map), s=45, alpha=0.5, edgecolors='none')
-
-                # Axis labels
-                if i<n-1: 
-                    ax.set_xticklabels([])
-                else: 
-                    ax.set_xlabel(plot_labs[j], labelpad=10)
-                    if i == n-1 and j == 0:
-                        # bottom-left: 2 decimals
-                        ax.xaxis.set_major_formatter(fmt_2)
-                
-                    elif i == n-1 and j == n-1:
-                        # bottom-right: integers only
-                        ax.xaxis.set_major_formatter(fmt_int)
-                
-                    else:
-                        # other bottom-row panels
-                        ax.xaxis.set_major_formatter(fmt_1)
-                    
-                if j>0:
-                    ax.set_yticklabels([])
-                else: 
-                    ax.set_ylabel(plot_labs[i], labelpad=10)
-                
-                # tick label size increase
-                ax.tick_params(axis='x')
-                ax.tick_params(axis='y')
-                
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-
-        ax_bottom_left = axes[n-1, 0]
-        ax_top_left    = axes[0, 0]
-        
-        # create a secondary y-axis
-        ax_top_left_mirror = ax_top_left.twinx()
-        
-        # copy tick locations from bottom-left x-axis
-        ticks = ax_bottom_left.get_xticks()
-        
-        ax_top_left_mirror.set_yticks(ticks)
-        ax_top_left_mirror.set_ylim(ax_bottom_left.get_xlim())
-        
-        # Copy formatter
-        ax_top_left_mirror.yaxis.set_major_formatter(ax_bottom_left.xaxis.get_major_formatter())
-        
-        # Make it look like a left axis
-        ax_top_left_mirror.yaxis.set_label_position("left")
-        ax_top_left_mirror.yaxis.tick_left()
-        
-        # Hide everything except labels
-        ax_top_left_mirror.spines["right"].set_visible(False)
-        ax_top_left_mirror.spines["top"].set_visible(False)
-        ax_top_left_mirror.spines["bottom"].set_visible(False)
-        
-        # Hide the original histogram y-axis labels
-        ax_top_left.tick_params(axis="y", labelleft=False)
-
-        handles = [
-            plt.Line2D([0],[0], marker='o', color='w', markerfacecolor=col_high, markersize=15, alpha=0.7, label="High"),
-            plt.Line2D([0],[0], marker='o', color='w', markerfacecolor=col_mid, markersize=10, alpha=0.5, label="Medium"),
-            plt.Line2D([0],[0], marker='o', color='w', markerfacecolor=col_low, markersize=15, alpha=0.7, label="Low")
-        ]
-        fig.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.56,0.93), borderpad =1, frameon=True)
-
-        plt.suptitle("Correlations of parameters — High AR vs Low AR", x=0.5, y=0.98)
-        fig.align_xlabels()
-        fig.align_ylabels()
-        fig.subplots_adjust(left=0.08, right=0.96, bottom=0.05, top=0.95, hspace=0.35, wspace=0.35)        
-        fig.savefig(fig_filepath)
-        plt.close(fig)
 
 def plot_AR_swarm(output_folder_path, scenarios, results_list, colors, labels, thin_space_formatter):
     
@@ -887,7 +683,7 @@ if __name__ == "__main__":
     
     start_time = time.time()
     
-    forw_proj(parallel  = local_parallel, waning = local_waning, vaccination_term = local_vaccination_term)
+    forw_proj(parallel  = local_parallel, vaccination_term = local_vaccination_term)
     
     end_time = time.time()
     elapsed = end_time - start_time

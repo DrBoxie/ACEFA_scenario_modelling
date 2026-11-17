@@ -1,47 +1,3 @@
-# TODO: Replace linspace by arange in the discretisation of beta
-# TODO: Add mean of forecast for each scenario for comparison
-# TODO: Add tracking of vaccination while infectious
-# TODO: Add delay to onset of protection after vaccination
-
-# =============================================================================
-# The full execution pipeline for the code is:
-#    1. Run this file, and adapt the following variables as needed:
-#       - ABC_output_results:       activate / suppress output of dataframes and plots of abc runs
-#       - seed:                     only used to generate the seed list which goes into the code of each run
-#       - seed2:
-#       - parallel:                 True = parallel process, False = sequential process
-#       - nr_cores:                 number of cores used for parallel processing. This variable is ignored if "parallel" is False
-#       - nr_particles:             number of particles to run
-#       - peak_time_range:          Acceptance range for peak time of epidemic for each run
-#       - AR_range:                 Acceptance range for attack rate for each run
-#       - VE_range:                 Acceptance range for vaccine efficacy for each run
-#
-#   In the list_to_sample_params of function, the following sampling ranges for the ABC samples are defined:
-
-#       - beta_0_range
-#       - beta_1_range
-#       - shift
-#       - half-life
-#       - phi_S1_range
-#       - phi_V0_range
-#       - phi_V1_range
-#       - frac_S1_range
-
-#   Multiple model variables are defined in the "init_params" function in the main_sim.py file, and need to be changed there if the model is changed.
-#   These are:
-#       - tau:                  determines size of tau-leap
-#       - t_start / t_end:      determine start and end day of the simulation
-#       - age_groups:           determines size of tau-leap
-#       - compartments:         determines size of tau-leap
-#       - tot_pop:              total population
-#       - frac_ages:            fraction of the population in each age group
-#       - C:                    Contact matrix
-#       - gamma:                recovery rate per age group
-#       - target_cover:         target coverage percentage for each age group of vaccination
-#       - iiv_rates:            weekly cumulative outroll percentage of IIV
-#       - laiv_rates:           weekly cumulative outroll percentage of LAIV
-#       - p_ext:                external force of infection
-# =============================================================================
 
 import os
 import numpy as np
@@ -50,25 +6,26 @@ import main_sim as sim
 import lhs_sampler as lhs
 import create_plots as plt_crt
 import laiv_phis as laiv
-# import forward_proj as forw
+import forward_proj as forw
 import copy
 from operator import itemgetter
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 import time
-import platform
-
-ABC_output_results = True                                                       # Suppress outputting figures and dataframes for ABC (if False) for quicker runs
-
-nr_runs_per_part = 10
-accept_perc = 0.9
-nr_allowed_rejected = nr_runs_per_part - int(np.ceil(nr_runs_per_part * accept_perc))
 
 paral = True
 cores = 12
-
-waning = True
 vaccination_term = "term_1"                                                     # accepted values are "term_1" or "term_2"
+K_beta = 0
+nr_particles = 10_000
+
+ABC_output_results = True                                                       # Suppress outputting figures and dataframes for ABC (if False) for quicker runs
+
+# Number of runs per particle in initial ABC step, and the minimal proportion
+# of accepted runs to be accepted
+nr_runs_per_part = 10
+accept_perc = 0.9
+nr_allowed_rejected = nr_runs_per_part - int(np.ceil(nr_runs_per_part * accept_perc))
 
 def classic_abc(parallel = True, nr_cores = 12):
     
@@ -80,20 +37,18 @@ def classic_abc(parallel = True, nr_cores = 12):
     
     accepted_counter = 0
     
-    # Number of samples to produce in the LHS
-    nr_particles = 70_000
     seed_list = rng.integers(0, 1_000_000_000_000_000_000,                          # one seed value per unique combination of particle and run nr of that particle
                              size=nr_particles * nr_runs_per_part) 
     
-    if platform.system() == "Windows":
-        current_dir = os.getcwd().lower()
-    else:
-        current_dir = "/pvol"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    if waning:    
-        fig_folder_path = os.path.join(current_dir, "ABC outputs with waning")
-    else:
-        fig_folder_path = os.path.join(current_dir, "ABC outputs no waning")
+    subdir_name = (
+        "ABC outputs " 
+    + ("term 1 vaccination and " if vaccination_term == "term_1" else "term 2 vaccination and ")
+    + (f"K = {K_beta}")
+    )
+    
+    fig_folder_path = os.path.join(current_dir, subdir_name)
             
     os.makedirs(fig_folder_path, exist_ok=True)    
     
@@ -102,15 +57,16 @@ def classic_abc(parallel = True, nr_cores = 12):
     AR_range = [0.1, 0.45]
     VE_range = [0.38, 0.5]
    
-    # First function initialises the generic simulation parameters, pre LHS
-    # The second one creates a dictionary with the parameters to sample in LHS
-    # each with their corresponding upper and lower bounds
-    # The third function returns an array where each row corresponds to 
+    # sim.init_params initialises the generic simulation parameters, pre LHS
+    # The function list_to_sample_params creates a dictionary with the 
+    # parameters to sample in LHS each with their corresponding upper and lower
+    # bounds
+    # lhs.lhs returns an array where each row corresponds to 
     # to one set of sampled parameters (i.e. a particle) from the LHS
-    params = sim.init_params(vaccination_term)                                  
+    params = sim.init_params(vaccination_term, K_beta)  
     nr_days, nr_age, pop, I_comps = itemgetter("nr_days", "nr_age", "tot_pop", "I_comps")(params)
     
-    params_to_sample = list_to_sample_params(waning)
+    params_to_sample = list_to_sample_params()
     sample_array, sample_keys = lhs.lhs(params_to_sample, nr_particles, rng2)
     
     # Initialise state for simulation
@@ -221,7 +177,7 @@ def classic_abc(parallel = True, nr_cores = 12):
                         AR_range, VE_range, sample_array, sample_keys, fig_spag_plot, fig_inf_per_comp_for_age_groups, VE_comparison_plot,
                         fig_corr_accepted_particles, VE_plots, boxplot_vacc_post_inf, three_panel_plot, params_to_sample, fig_folder_path, parallel, nr_cores, R0_plot, list_R0_acc, list_R0_rej)
         
-def list_to_sample_params(waning):    
+def list_to_sample_params():
    
 # =============================================================================
 # List the parameters to sample via LHS, with their upper and lower bounds
@@ -229,7 +185,6 @@ def list_to_sample_params(waning):
 # simulation parameters
 # =============================================================================
 
-    # beta_0_range = [0.023, 0.047]
     beta_0_range = [0.037, 0.055]
     beta_1_range = [0.05, 0.3]
     shift = [40, 190]
@@ -237,10 +192,7 @@ def list_to_sample_params(waning):
     phi_V0_range = [0.2, 0.8]
     phi_V1_range = [0.2, 0.8]
     frac_S1_range = [0.2, 0.8]
-    if waning:
-      half_life = [250, 1825]
-    else:
-      half_life = [365_000, 365_250]
+    half_life = [250, 1825]
     
     params_to_sample = {
         "beta_0": beta_0_range,
@@ -260,14 +212,14 @@ def list_to_sample_params(waning):
 # -----------------------------
 def update_params(params, particle, keys, it = None):
    # TODO: Check whether the it variable can ever be a non-default value, and if not, remove this
-    nr_age, nr_days, t_start, t_end = itemgetter("nr_age", "nr_days", "t_start", "t_end")(params)
+    nr_age, nr_days, t_start, t_end, K_beta = itemgetter("nr_age", "nr_days", "t_start", "t_end", "K_beta")(params)
         
     beta_0_val = particle[keys.index("beta_0")]
     beta_1_val = particle[keys.index("beta_1")]
     shift = particle[keys.index("shift")]
     
     t = np.linspace(t_start, t_end, num = nr_days)
-    beta = beta_0_val * (1 +  beta_1_val * np.sin(( 2 * np.pi * (t - shift) ) / nr_days))
+    beta = beta_K_func(beta_0_val, beta_1_val, shift, K_beta, t)
     
     # Sanity check on beta
     if np.any(beta < 0 ):
@@ -362,6 +314,18 @@ def compute_summary(prev, inc, params, peak_time_range, AR_range, VE_range, vacc
     else:
         return True, AR, VE, VE_alt
 
+def beta_K_func(beta0, beta1, t0, K, t):
+    
+    s = np.sin(2 * np.pi * (t - t0) / 365)
+    
+    if K == 0:
+        beta = beta0 * (1 + beta1 * s)
+    else:
+        beta = beta0 * (1 + beta1 * np.tanh(K * s) / np.tanh(K))
+    
+    return beta
+    
+
 def run_particle(idx, particle, seed_list, common_var_all_runs, parallel, accepted_counter = 0):
     
     nr_particles, empty_states, params, current_dir, sample_keys, peak_time_range, AR_range, VE_range,nr_allowed_rejected = itemgetter("nr_particles","empty_states", 
@@ -446,21 +410,21 @@ if __name__ == "__main__":
     
     start_time_laiv = time.time()
 
-    laiv.laiv_phis(parallel = paral, waning = waning, vaccination_term = vaccination_term , nr_cores = cores)
+    laiv.laiv_phis(parallel = paral, vaccination_term = vaccination_term, K_beta = K_beta, nr_cores = cores)
 
     end_time = time.time()
     elapsed = end_time - start_time_laiv
     print(f"Simulation for new phi values elapsed time: {elapsed:.3f} seconds\n")
     print("Calculation of phi's is done! Booyah!!!\n")
     
-    # start_time_forw = time.time()
+    start_time_forw = time.time()
     
-    # forw.forw_proj(parallel = paral, vaccination_term = vaccination_term,  nr_cores = cores)
+    forw.forw_proj(parallel = paral, vaccination_term = vaccination_term, K_beta = K_beta,  nr_cores = cores)
     
-    # end_time = time.time()
-    # elapsed = end_time - start_time_forw
-    # print(f"Forward project elapsed time: {elapsed:.3f} seconds\n")
-    # print("Simulation is done! Forsooth, rejoice!!!\n")
+    end_time = time.time()
+    elapsed = end_time - start_time_forw
+    print(f"Forward project elapsed time: {elapsed:.3f} seconds\n")
+    print("Simulation is done! Forsooth, rejoice!!!\n")
     
     print(f"Total time for full run: {end_time-start_time:.3f} seconds\n")
     

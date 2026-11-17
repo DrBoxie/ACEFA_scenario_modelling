@@ -168,6 +168,7 @@ def compute_R0(params):
     C, gamma, beta_0, beta_1, N = itemgetter("C", "gamma", "beta_0", "beta_1", "N")(params)
     
     beta = beta_0
+    # beta = beta_0 * (1 + beta_1) # uncomment when calculting R_0 with maximal transmissibility
     gamma = gamma[0]
     
     N_a = N[:, np.newaxis]

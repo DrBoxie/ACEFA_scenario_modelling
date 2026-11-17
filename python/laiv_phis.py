@@ -10,14 +10,14 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 import copy
-import platform
 
 new_phis = True
-local_parallel = True
-local_waning = True
-local_vaccination_term = "term_1"
 
-def laiv_phis(new_phis = True, parallel = True, waning = False, vaccination_term = "term_1", nr_cores = 12):
+local_parallel = True
+local_vaccination_term = "term_1"
+local_K_beta = 0
+
+def laiv_phis(new_phis = True, parallel = True, vaccination_term = "term_1", K_beta = 0, nr_cores = 12):
     
     print("\nStarting the simulation.\n")
     
@@ -38,15 +38,14 @@ def laiv_phis(new_phis = True, parallel = True, waning = False, vaccination_term
     phi_V0_range = [0, 0.8]
     phi_V1_range = [0, 0.8]
 
-    if platform.system() == "Windows":
-        curr_dir = os.getcwd().lower()
-    else:
-        curr_dir = "/pvol"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    if waning:    
-        particle_addr = os.path.join(curr_dir, "ABC outputs with waning")
-    else:
-        particle_addr = os.path.join(curr_dir, "ABC outputs no waning")
+    particle_addr = os.path.join(current_dir, (
+        "ABC outputs " 
+        + ("term 1 vaccination and " if vaccination_term == "term_1" else "term 2 vaccination and ") 
+        + (f"K = {K_beta}")
+        )
+        )
         
     PATH_IN = os.path.join(particle_addr, "accepted_particles.csv")
     SEED_IN = os.path.join(particle_addr, "accepted_seeds.csv")
@@ -69,7 +68,7 @@ def laiv_phis(new_phis = True, parallel = True, waning = False, vaccination_term
     # Generate seeds we will use for the generation of the phi's (the first element of the tuple is for the pessimistic scenario, the second for the central scenario, and the third for the optimistic one)
     phi_seed_list = list(zip(rng2.integers(0, 1_000_000_000_000, size = nr_parts), rng2.integers(0, 1_000_000_000_000, size = nr_parts), rng2.integers(0, 1_000_000_000_000, size = nr_parts)))
     
-    params = sim.init_params(vaccination_term)
+    params = sim.init_params(vaccination_term, K_beta)
     nr_days, nr_age, pop, t_end, unvacc_comps, vacc_comps, I_comps = itemgetter("nr_days", "nr_age", "tot_pop", "t_end", "Unvacc_comps", "Vacc_comps", "I_comps")(params)    
     
     # Initialise state for simulation
@@ -83,14 +82,14 @@ def laiv_phis(new_phis = True, parallel = True, waning = False, vaccination_term
     
     if parallel:
         
-        full_vars_runs = [(idx, part, seed_list[idx][0], phi_seed_list[idx]) + (params, part_vars, phi_V1_min, phi_V1_max, phi_V0_max, LAIV_ages, laiv_idx, empty_states, curr_dir, VE_accept_range, True) for idx, part in enumerate(particles)]
+        full_vars_runs = [(idx, part, seed_list[idx][0], phi_seed_list[idx]) + (params, part_vars, phi_V1_min, phi_V1_max, phi_V0_max, LAIV_ages, laiv_idx, empty_states, current_dir, VE_accept_range, True) for idx, part in enumerate(particles)]
         with ProcessPoolExecutor(max_workers=nr_cores) as executor:
             results_list = list(tqdm(executor.map(run_particle_wrapper, full_vars_runs, chunksize=1), total = len(full_vars_runs), desc="Running simulations for phi's"))
     
     else:
         for idx, part in enumerate(particles):
             
-            results_list.append(individual_part_phi_calc(idx, part, seed_list[idx][0], phi_seed_list[idx], params, part_vars, phi_V1_min, phi_V1_max, phi_V0_max, LAIV_ages, laiv_idx, empty_states, curr_dir, VE_accept_range, False))
+            results_list.append(individual_part_phi_calc(idx, part, seed_list[idx][0], phi_seed_list[idx], params, part_vars, phi_V1_min, phi_V1_max, phi_V0_max, LAIV_ages, laiv_idx, empty_states, current_dir, VE_accept_range, False))
             
             if idx % 5 == 0 and idx > 0:
                 print(f"Finished particle number {idx}.\n")
@@ -116,7 +115,7 @@ def laiv_phis(new_phis = True, parallel = True, waning = False, vaccination_term
     df_acc_mid_phis.to_csv(os.path.join(particle_addr, "acc_mid_phis.csv"), index=True)
     df_acc_opt_phis.to_csv(os.path.join(particle_addr, "acc_opt_phis.csv"), index=True)
 
-def individual_part_phi_calc(idx, part, run_seed, phi_seeds, params, part_vars, phi_V1_min, phi_V1_max, phi_V0_max, laiv_ages, laiv_idx, empty_states, curr_dir, VE_accept_range, parallel):
+def individual_part_phi_calc(idx, part, run_seed, phi_seeds, params, part_vars, phi_V1_min, phi_V1_max, phi_V0_max, laiv_ages, laiv_idx, empty_states, current_dir, VE_accept_range, parallel):
     
     list_phis = []
     list_scenarios = []
@@ -211,7 +210,8 @@ def run_particle_wrapper(args):
 if __name__ == "__main__":
     
     start_time = time.time()
-    laiv_phis(parallel = local_parallel, waning = local_waning, vaccination_term = "local_vaccination_term")
+    
+    laiv_phis(parallel = local_parallel, K_beta = local_K_beta, vaccination_term = local_vaccination_term)
     
     end_time = time.time()
     elapsed = end_time - start_time

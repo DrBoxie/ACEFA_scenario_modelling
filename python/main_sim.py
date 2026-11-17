@@ -9,7 +9,7 @@ def main(params, states, incidences, rng, new_phis = False, laiv_ages = []):
                 
     return prevs, R0_series, inc, vacc_post_inf
 
-def init_params(term_admin_laiv = "term_1"):
+def init_params(term_admin_laiv = "term_1", K_beta = 0):
     
     tau = 1                                                                     # tau-leaping step size.
     
@@ -226,7 +226,8 @@ def init_params(term_admin_laiv = "term_1"):
               "laiv_rates": laiv_rates,
               "target_cover": target_cover,
               "scenarios": scenarios,
-              "colors": colors
+              "colors": colors,
+              "K_beta": K_beta
               }
     
     return params
