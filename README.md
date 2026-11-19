@@ -1,6 +1,6 @@
-# Reproducing the results of "Modelling the impact of a school-based influenza vaccination programme under uncertainty in seasonal transmission dynamics", part of the ACEFA scenario modelling hub
+# ACEFA scenario modelling hub for LAIV school-based rollout program: University of Melbourne contribution
 
-This repository contains the code and input data needed to reproduce the results presented in [Modelling the impact of a school-based influenza vaccination programme under uncertainty in seasonal transmission dynamics](https://doi.org/YOUR-DOI).
+This repository contains the code and input data needed to reproduce the results presented in [Modelling the impact of a school-based influenza vaccination programme under uncertainty in seasonal transmission dynamics](https://doi.org/YOUR-DOI). This is part of the ACEFA scenario modelling hub.
 
 ## Software requirements
 
