@@ -1,5 +1,3 @@
-# TODO: Check daily admin vacc helper function below to ensure new values are used of LAIV
-# TODO: Update LAIV vaccination timing to not coincide with IIV timing
 
 import numpy as np
 import pandas as pd
@@ -16,24 +14,32 @@ import copy
 import pyarrow as pa
 import pyarrow.parquet as pq
 from itertools import product
+import json
 
 plt.close("all")                                                                # Close all figures that may be open in memory
 
-local_parallel = True
-local_vaccination_term = "term_1"
-
-def forw_proj(parallel = True, vaccination_term = "term_1", K_beta = 0, nr_cores = 12):
+def forw_proj(config):
     
     print("Let's get this thing on the road...\n")
-    
-    nr_proj_per_part = 50
-    seed = 790202       # Used whenever multiple runs are done for each combo of particle and scenario
     
     output_figs = True
     output_dfs = True
     
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    particle_addr = os.path.join(current_dir, "ABC outputs term " + vaccination_term[-1] + " vaccination and K = " + str(K_beta))
+    parallel, nr_cores, vaccination_term, K_beta, nr_particles, ROOT, ABC_output_dir, nr_proj_per_part, output_dir = \
+        itemgetter("paral", "nr_cores", "vaccination_term", "K_beta", "nr_particles", "ROOT", "ABC_output_dir", "nr_proj_per_part", "Forw_proj_output_dir")(config)
+    
+    if ROOT == "default":
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_dir = os.path.dirname(current_dir)
+        particle_addr = os.path.join(project_dir, ABC_output_dir)
+        output_folder_path = os.path.join(project_dir, output_dir)
+    else:
+        particle_addr = os.path.join(ROOT, ABC_output_dir)
+        output_folder_path = os.path.join(ROOT, output_dir)
+    
+    seed = 790202       # Used whenever multiple runs are done for each combo of particle and scenario
+    
+    # current_dir = os.path.dirname(os.path.abspath(__file__))
         
     PATH_IN = os.path.join(particle_addr, "accepted_particles.csv")
     SEED_IN = os.path.join(particle_addr, "accepted_seeds.csv")
@@ -42,7 +48,7 @@ def forw_proj(parallel = True, vaccination_term = "term_1", K_beta = 0, nr_cores
     ACC_OPT_IN = os.path.join(particle_addr, "acc_opt_phis.csv")
     ACC_INF_INC = os.path.join(particle_addr, "acc_inf_inc.csv")
     
-    output_folder_path = os.path.join(current_dir, "Forward projection term " + vaccination_term[-1] + " vaccination and K = " + str(K_beta))
+    # output_folder_path = os.path.join(current_dir, "Forward projection term " + vaccination_term[-1] + " vaccination and K = " + str(K_beta))
     
     particles = pd.read_csv(PATH_IN ,index_col = 0)
     part_vars = list(particles.columns)
@@ -75,13 +81,13 @@ def forw_proj(parallel = True, vaccination_term = "term_1", K_beta = 0, nr_cores
     results_list = []
     
     if parallel:
-        full_vars_runs = [(part, seed_list[pos::nr_parts], acc_pes_phis[pos], acc_mid_phis[pos], acc_opt_phis[pos], scenarios, part_vars, params, empty_states, current_dir) for pos, (idx, part) in enumerate(particles.iterrows())]
+        full_vars_runs = [(part, seed_list[pos::nr_parts], acc_pes_phis[pos], acc_mid_phis[pos], acc_opt_phis[pos], scenarios, part_vars, params, empty_states) for pos, (idx, part) in enumerate(particles.iterrows())]
         with ProcessPoolExecutor(max_workers=nr_cores) as executor:
             results_list = list(tqdm(executor.map(run_particle_wrapper, full_vars_runs, chunksize=1), total = len(full_vars_runs), desc="Still doing some forecasting magic"))
     
     else:
         for pos, (idx, part) in enumerate(particles.iterrows()):
-            results_list.append(run_forward_proj_particle(part, seed_list[pos::nr_parts], acc_pes_phis[pos], acc_mid_phis[pos], acc_opt_phis[pos], scenarios, part_vars, params, empty_states, current_dir))
+            results_list.append(run_forward_proj_particle(part, seed_list[pos::nr_parts], acc_pes_phis[pos], acc_mid_phis[pos], acc_opt_phis[pos], scenarios, part_vars, params, empty_states))
             
             if idx % 5 == 0 and idx > 0:
                 print(f"Forward simulation of particle {idx} out of {nr_parts} done.")
@@ -622,7 +628,7 @@ def update_scenario_params(scenario, params, pes_phis, mid_phis, opt_phis):
     
     return params
 
-def run_forward_proj_particle(part, seed_list, pes_phis, mid_phis, opt_phis, scenarios, part_vars, params, empty_states, current_dir):
+def run_forward_proj_particle(part, seed_list, pes_phis, mid_phis, opt_phis, scenarios, part_vars, params, empty_states):
    
     part = part.to_numpy()
     
@@ -683,7 +689,14 @@ if __name__ == "__main__":
     
     start_time = time.time()
     
-    forw_proj(parallel  = local_parallel, vaccination_term = local_vaccination_term)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_dir = os.path.dirname(current_dir)
+    config_path = os.path.join(project_dir, "config.json")
+
+    with open(config_path, encoding="utf-8") as config_file:
+        config = json.load(config_file)
+    
+    forw_proj(config)
     
     end_time = time.time()
     elapsed = end_time - start_time

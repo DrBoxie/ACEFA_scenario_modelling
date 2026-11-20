@@ -6,56 +6,44 @@ import main_sim as sim
 import lhs_sampler as lhs
 import create_plots as plt_crt
 import laiv_phis as laiv
-import forward_proj as forw
+# import forward_proj as forw
 import copy
 from operator import itemgetter
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 import time
-
-paral = True
-cores = 12
-vaccination_term = "term_1"                                                     # accepted values are "term_1" or "term_2"
-K_beta = 0
-nr_particles = 10_000
+import json
 
 ABC_output_results = True                                                       # Suppress outputting figures and dataframes for ABC (if False) for quicker runs
 
-# Number of runs per particle in initial ABC step, and the minimal proportion
-# of accepted runs to be accepted
-nr_runs_per_part = 10
-accept_perc = 0.9
-nr_allowed_rejected = nr_runs_per_part - int(np.ceil(nr_runs_per_part * accept_perc))
-
-def classic_abc(parallel = True, nr_cores = 12):
+def classic_abc(config):
     
-    # Initialise the random number generator
-    seed = 502                                                                  # seed is used to run the simulation
-    seed2 = 463                                                                 # seed2 is only used to sample parameters in LHS
-    rng = np.random.default_rng(seed)
-    rng2 = np.random.default_rng(seed2)
+    parallel, nr_cores, vaccination_term, K_beta, nr_particles, ROOT, ABC_output_dir, nr_runs_per_part, accept_perc = \
+        itemgetter("paral", "nr_cores", "vaccination_term", "K_beta", "nr_particles", "ROOT", "ABC_output_dir", "nr_runs_per_part", "accept_perc")(config)
     
-    accepted_counter = 0
+    if ROOT == "default":
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_dir = os.path.dirname(current_dir)
+        fig_folder_path = os.path.join(project_dir, ABC_output_dir)
+    else:
+        fig_folder_path = os.path.join(ROOT, ABC_output_dir)
     
-    seed_list = rng.integers(0, 1_000_000_000_000_000_000,                          # one seed value per unique combination of particle and run nr of that particle
-                             size=nr_particles * nr_runs_per_part) 
-    
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    subdir_name = (
-        "ABC outputs " 
-    + ("term 1 vaccination and " if vaccination_term == "term_1" else "term 2 vaccination and ")
-    + (f"K = {K_beta}")
-    )
-    
-    fig_folder_path = os.path.join(current_dir, subdir_name)
-            
     os.makedirs(fig_folder_path, exist_ok=True)    
     
     # ranges for acceptance
     peak_time_range = [147, 289]
     AR_range = [0.1, 0.45]
     VE_range = [0.38, 0.5]
+   
+    # Initialise the random number generator
+    seed = 502                                                                  # seed is used to run the simulation
+    seed2 = 463                                                                 # seed2 is only used to sample parameters in LHS
+    rng = np.random.default_rng(seed)
+    rng2 = np.random.default_rng(seed2)
+    accepted_counter = 0
+   
+    seed_list = rng.integers(0, 1_000_000_000_000_000_000,                          # one seed value per unique combination of particle and run nr of that particle
+                            size=nr_particles * nr_runs_per_part)  
    
     # sim.init_params initialises the generic simulation parameters, pre LHS
     # The function list_to_sample_params creates a dictionary with the 
@@ -72,13 +60,16 @@ def classic_abc(parallel = True, nr_cores = 12):
     # Initialise state for simulation
     empty_states = sim.create_states(params) 
     
+    # Number of runs per particle in initial ABC step, and the minimal proportion
+    # of accepted runs to be accepted 
+    nr_allowed_rejected = nr_runs_per_part - int(np.ceil(nr_runs_per_part * accept_perc))
+    
     runs = [(idx, particle, seed_list[idx : nr_particles * nr_runs_per_part : nr_particles]) for idx, particle in enumerate(sample_array)]
     
     common_var_all_runs = {
         "nr_particles": nr_particles,
         "empty_states": empty_states,
         "params": params,
-        "current_dir": current_dir,
         "sample_keys": sample_keys,
         "peak_time_range": peak_time_range,
         "AR_range": AR_range,
@@ -328,8 +319,8 @@ def beta_K_func(beta0, beta1, t0, K, t):
 
 def run_particle(idx, particle, seed_list, common_var_all_runs, parallel, accepted_counter = 0):
     
-    nr_particles, empty_states, params, current_dir, sample_keys, peak_time_range, AR_range, VE_range,nr_allowed_rejected = itemgetter("nr_particles","empty_states", 
-                                "params", "current_dir", "sample_keys", "peak_time_range", "AR_range", "VE_range", "nr_allowed_rejected")(common_var_all_runs)    
+    nr_particles, empty_states, params, sample_keys, peak_time_range, AR_range, VE_range,nr_allowed_rejected = itemgetter("nr_particles","empty_states", 
+                                "params", "sample_keys", "peak_time_range", "AR_range", "VE_range", "nr_allowed_rejected")(common_var_all_runs)    
     
     acc_list = []
     AR_list = []
@@ -401,7 +392,14 @@ if __name__ == "__main__":
     
     start_time = time.time()
     
-    classic_abc(parallel = paral, nr_cores = cores)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_dir = os.path.dirname(current_dir)
+    config_path = os.path.join(project_dir, "config.json")
+
+    with open(config_path, encoding="utf-8") as config_file:
+        config = json.load(config_file)
+    
+    classic_abc(config)
     
     end_time = time.time()
     elapsed = end_time - start_time
@@ -410,21 +408,21 @@ if __name__ == "__main__":
     
     start_time_laiv = time.time()
 
-    laiv.laiv_phis(parallel = paral, vaccination_term = vaccination_term, K_beta = K_beta, nr_cores = cores)
+    laiv.laiv_phis(config)
 
     end_time = time.time()
     elapsed = end_time - start_time_laiv
     print(f"Simulation for new phi values elapsed time: {elapsed:.3f} seconds\n")
     print("Calculation of phi's is done! Booyah!!!\n")
     
-    start_time_forw = time.time()
+    # start_time_forw = time.time()
     
-    forw.forw_proj(parallel = paral, vaccination_term = vaccination_term, K_beta = K_beta,  nr_cores = cores)
-    
-    end_time = time.time()
-    elapsed = end_time - start_time_forw
-    print(f"Forward project elapsed time: {elapsed:.3f} seconds\n")
-    print("Simulation is done! Forsooth, rejoice!!!\n")
+    # forw.forw_proj(config)
+    # 
+    # end_time = time.time()
+    # elapsed = end_time - start_time_forw
+    # print(f"Forward project elapsed time: {elapsed:.3f} seconds\n")
+    # print("Simulation is done! Forsooth, rejoice!!!\n")
     
     print(f"Total time for full run: {end_time-start_time:.3f} seconds\n")
     
