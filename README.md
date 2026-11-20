@@ -57,7 +57,7 @@ Before running the scripts, edit `config.json` in the repository root as needed.
 | Setting | Description | Default |
 | --- | --- | --- |
 | `paral` | Set to `false` to run the Python code on a single core, or `true` to run it in parallel using the number of cores specified by `nr_cores`. | `true` |
-| `nr_cores` | Number of cores to use when `paral` is `true`. | [Add default] |
+| `nr_cores` | Number of cores to use when `paral` is `true`. | `12` |
 | `nr_runs_per_part` | Number of simulation runs for each particle in the initial approximate Bayesian computation (ABC) step. | `10` |
 | `accept_perc` | Minimum fraction of those runs that must meet the acceptance criteria for a particle to be accepted. Enter this as a fraction between 0 and 1. | `0.9` |
 | `vaccination_term` | Timing of the live attenuated influenza vaccine (LAIV) rollout. Use `"term_1"` for simulation days 59–100 or `"term_2"` for simulation days 110–170. | `"term_1"` |
