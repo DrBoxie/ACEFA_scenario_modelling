@@ -7,8 +7,8 @@ This repository contains the code and publicly available input data for reproduc
 The code was tested with the following versions.
 
 - Python 3.10.12
-- R [version]
-- RStudio [version]
+- R 4.5.3
+- RStudio Server 2026.1.1.403
 
 ### Python packages
 
