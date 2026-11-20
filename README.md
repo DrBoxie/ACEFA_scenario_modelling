@@ -1,18 +1,26 @@
 # ACEFA scenario modelling hub for LAIV school-based rollout program: University of Melbourne contribution
 
-This repository contains the code and input data needed to reproduce the results presented in [Modelling the impact of a school-based influenza vaccination programme under uncertainty in seasonal transmission dynamics](https://doi.org/YOUR-DOI). This is part of the ACEFA scenario modelling hub.
+This repository contains the code and publicly available input data for reproducing the results presented in [Modelling the impact of a school-based influenza vaccination programme under uncertainty in seasonal transmission dynamics](https://doi.org/YOUR-DOI). This is part of the ACEFA scenario modelling hub.
 
 ## Software requirements
 
 The code was tested with the following versions.
 
-- Python 3.10.12.
+- Python 3.10.12
 - R [version]
 - RStudio [version]
 
 ### Python packages
 
-- [Add required Python packages and versions]
+The Python package versions used in the analyses are listed in
+[requirements.txt](requirements.txt).
+
+With your Python environment activated, run the following command from
+the repository root:
+
+```bash
+python -m pip install -r requirements.txt
+```
 
 ### R packages
 
@@ -20,14 +28,27 @@ The code was tested with the following versions.
 
 ## Repository structure
 
-The repository root should contain `config.json` and the following directories.
+The repository root should contain the following:
 
 | Path | Contents |
 | --- | --- |
 | `config.json` | Configuration settings used by the pipeline |
+| `requirements.txt` | Python dependencies and the versions used |
 | `python/` | Python scripts |
 | `R_code/` | R scripts |
-| `data/` | Input data required by the pipeline |
+| `data/` | Publicly available input data |
+
+## Data availability
+
+Aggregate hospitalisation data from the Australian Institute of Health and Welfare (AIHW),
+population data by jurisdiction from the Australian Bureau of Statistics (ABS), and a CSV file
+containing influenza epidemic peak timings are publicly available in this repository.
+
+The peak timings were derived from influenza case data from the Australian National Notifiable
+Disease Surveillance System (NNDSS). The underlying case data cannot be shared under the terms of
+our data access agreements. Requests for access should be submitted to
+[NNDSS.datarequests@health.gov.au](mailto:NNDSS.datarequests@health.gov.au).
+A data committee independent of the authorship group assesses these requests.
 
 ## Configuration
 
@@ -51,7 +72,7 @@ For example, with `nr_runs_per_part` set to `10` and `accept_perc` set to `0.9`,
 
 ## Running the pipeline
 
-Run these commands from the repository root in the order shown.
+After installing the Python dependencies and reviewing config.json, run these commands from the repository root in the order shown.
 
 1. Run the ABC calibration.
 
@@ -59,7 +80,7 @@ Run these commands from the repository root in the order shown.
    python python/abc_code.py
    ```
 
-2. Once calibration has finished, run the forward projections.
+2. Once calibration has finished and the Python process has exited, run the forward projections as a separate command.
 
    ```bash
    python python/forward_proj.py
