@@ -3,11 +3,10 @@
   "nr_cores": 12,
   "nr_runs_per_part": 10,
   "accept_perc": 0.9,
-  "_comment": "allowed values for vaccination_term are 'term_1' and 'term_2'",
   "vaccination_term": "term_1",
   "K_beta": 0,
   "nr_particles": 70000,
-  "ROOT": "/pvol",
+  "ROOT": "default",
   "ABC_output_dir": "ABC_outputs",
   "nr_proj_per_part": 50,
   "Forw_proj_output_dir": "Forward projection"
